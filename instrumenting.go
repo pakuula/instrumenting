@@ -3,21 +3,24 @@ package instrumenting
 import (
 	"time"
 
+	"github.com/pakuula/instrumenting/fields"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
+type Field = fields.Field
+
 type Tracer interface {
-	Init(scope string, withFields ...zap.Field) Tracer
-	Child(segment string, withFields ...zap.Field) Tracer
+	Init(scope string, withFields ...Field) Tracer
+	Child(segment string, withFields ...Field) Tracer
 
 	GetStartTime() time.Time
 	GetTimeStamp() time.Time
 	GetElapsed() time.Duration
 
-	Trace(location string, data ...zap.Field)
-	TraceWithError(location string, err error, data ...zap.Field)
-	Finish(data ...zap.Field)
+	Trace(location string, data ...Field)
+	TraceWithError(location string, err error, data ...Field)
+	Finish(data ...Field)
 }
 
 type _DummyTracer struct {
@@ -26,12 +29,12 @@ type _DummyTracer struct {
 	Elapsed       time.Duration
 }
 
-func (t *_DummyTracer) Init(scope string, withFields ...zap.Field) Tracer {
+func (t *_DummyTracer) Init(scope string, withFields ...Field) Tracer {
 	t.StartedTStamp = time.Now()
 	t.TStamp = t.StartedTStamp
 	return t
 }
-func (t *_DummyTracer) Child(segment string, data ...zap.Field) Tracer {
+func (t *_DummyTracer) Child(segment string, data ...Field) Tracer {
 	tt := (&_DummyTracer{})
 	return tt.Init(segment)
 }
@@ -45,16 +48,16 @@ func (t *_DummyTracer) GetTimeStamp() time.Time {
 func (t *_DummyTracer) GetElapsed() time.Duration {
 	return t.Elapsed
 }
-func (t *_DummyTracer) Trace(location string, data ...zap.Field) {
+func (t *_DummyTracer) Trace(location string, data ...Field) {
 	now := time.Now()
 	t.Elapsed = now.Sub(t.TStamp)
 	t.TStamp = time.Now()
 }
 
-func (t *_DummyTracer) TraceWithError(location string, err error, data ...zap.Field) {
+func (t *_DummyTracer) TraceWithError(location string, err error, data ...Field) {
 	t.Trace(location)
 }
-func (t *_DummyTracer) Finish(data ...zap.Field) {
+func (t *_DummyTracer) Finish(data ...Field) {
 	t.Trace("finished")
 }
 
@@ -64,11 +67,14 @@ const (
 	ELAPSED_KEY = "elapsed"
 )
 
+type Logger = zap.Logger
+type PrimitiveArrayEncoder = zapcore.PrimitiveArrayEncoder
+
 var (
-	DefaultLogger *zap.Logger
+	DefaultLogger *Logger
 )
 
-func MicrosecondsDurationEncoder(d time.Duration, enc zapcore.PrimitiveArrayEncoder) {
+func MicrosecondsDurationEncoder(d time.Duration, enc PrimitiveArrayEncoder) {
 	enc.AppendFloat64(float64(d) / float64(time.Microsecond))
 }
 func init() {
@@ -100,11 +106,11 @@ type DefaultTracer struct {
 	TStamp        time.Time
 	Elapsed       time.Duration
 	Scope         string
-	WithFields    []zap.Field
-	Logger        zap.Logger
+	WithFields    []Field
+	Logger        Logger
 }
 
-func (t *DefaultTracer) Init(scope string, withFields ...zap.Field) Tracer {
+func (t *DefaultTracer) Init(scope string, withFields ...Field) Tracer {
 	t.Scope = scope
 	t.WithFields = withFields
 	if len(scope) > 0 {
@@ -132,7 +138,7 @@ func (t *DefaultTracer) GetTimeStamp() time.Time {
 	return t.TStamp
 }
 
-func (t *DefaultTracer) traceInternal(location string, err error, showErr bool, data ...zap.Field) {
+func (t *DefaultTracer) traceInternal(location string, err error, showErr bool, data ...Field) {
 	now := time.Now()
 	t.Elapsed = now.Sub(t.TStamp)
 	logger := t.Logger.
@@ -145,19 +151,19 @@ func (t *DefaultTracer) traceInternal(location string, err error, showErr bool, 
 	t.TStamp = time.Now()
 }
 
-func (t *DefaultTracer) Trace(location string, data ...zap.Field) {
+func (t *DefaultTracer) Trace(location string, data ...Field) {
 	t.traceInternal(location, nil, false, data...)
 }
-func (t *DefaultTracer) TraceWithError(location string, err error, data ...zap.Field) {
+func (t *DefaultTracer) TraceWithError(location string, err error, data ...Field) {
 	t.traceInternal(location, err, true, data...)
 }
 
-func (t *DefaultTracer) Finish(data ...zap.Field) {
+func (t *DefaultTracer) Finish(data ...Field) {
 	t.TStamp = t.StartedTStamp
 	t.traceInternal("finished", nil, false, data...)
 }
 
-func (t *DefaultTracer) Child(segment string, withFields ...zap.Field) Tracer {
+func (t *DefaultTracer) Child(segment string, withFields ...Field) Tracer {
 	var scope string
 	if len(t.Scope) > 0 {
 		scope = t.Scope + ":" + segment
@@ -171,7 +177,7 @@ func (t *DefaultTracer) Child(segment string, withFields ...zap.Field) Tracer {
 	return res.Init(scope, withFields...)
 }
 
-func NewTracer(scope string, active bool, withFields ...zap.Field) Tracer {
+func NewTracer(scope string, active bool, withFields ...Field) Tracer {
 	if !active {
 		return (&_DummyTracer{}).Init(scope)
 	}
