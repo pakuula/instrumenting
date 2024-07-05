@@ -1,6 +1,9 @@
 sha256
 self
 
+!example/sha256
+!example/self
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
